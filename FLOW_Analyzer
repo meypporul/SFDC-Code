@@ -1,0 +1,396 @@
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.File;  
+import javax.xml.parsers.DocumentBuilder;  
+import javax.xml.parsers.DocumentBuilderFactory;  
+import org.w3c.dom.Document;  
+import org.w3c.dom.NamedNodeMap; 
+import org.w3c.dom.Node;  
+import org.w3c.dom.NodeList;
+import java.util.*;
+public class FLOW_Analyzer  
+{  
+	static boolean logging = false, startingF1 = true, startingF2 = true;
+	static String FileLocation = null, LogLocation=null;
+	static String Status = null;
+	static boolean actionCalls = false, actionCalls_processMetadataValues= false;
+	static boolean processMetadataValues_name= false, processMetadataValues_value= false, processMetadataValues_stringValue = false;
+	static boolean inputParameters, inputParameters_processMetadataValues = false;
+	static boolean decisions = false, decisions_rules = false, decisions_conditions = false, decisions_label = false, decisions_rules_label = false;
+	static int decisions_count = 0;
+	static boolean decisions_operator = false, decisions_leftValueReference = false, decisions_rightValue = false, decisions_rightValues = false;
+	static boolean Flow_variables = false;
+	static List<String> conditions = new ArrayList<>();
+	static Set<String> condition_Field = new HashSet<String>();
+	static Set<String> decission_condition_Field = new HashSet<String>();
+	static List<String> decissionList = new ArrayList<>();
+	static ArrayList<String[]> decisions_list = new ArrayList<String[]>();	
+	static String conditions_leftValueReference, conditions_operator, conditions_rightValues, conditions_label, decision_label;
+	static int order = 0;
+	static String currentFlow = null, processType = null;
+	static String variables_name = null, variables_objectType = null, variables_isInput = null;
+	static Set<String> variables = new HashSet<String>();
+	static Set<String> variable_objectType = new HashSet<String>();
+	static int Level = 0;
+	static boolean skipInvocable = false;
+	
+	public static void main(String[] args)  
+	{  
+		try   
+		{  
+			//Creating a File object for directory
+			FileLocation = "D:\\Users\\skuppusa\\Documents\\ADU\\Full_CODE_UAT\\flows _XML\\";
+			LogLocation = "D:\\Users\\skuppusa\\Documents\\ADU\\Full_CODE_UAT\\";
+			File directoryPath = new File(FileLocation);
+		  	//List of all files and directories
+		  	String contents[] = directoryPath.list();
+		  	System.out.println("List of files and directories in the specified directory:");
+		  	
+		  	writeHeader("Summary");
+		  	writeHeader("decisions");
+		  	
+		  	//for(int i=0; i==0; i++) {
+		  	for(int i=0; i<contents.length; i++) {
+		  		System.out.println(contents[i]);
+			  
+			  	File file = new File(FileLocation + contents[i]);
+		  		//File file = new File(FileLocation + "Therapy_Initiation_WI_Dispo_Flow_MS.flow");
+				DocumentBuilder documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();  
+				Document document = documentBuilder.parse(file);  
+				//System.out.println("Root element: "+ document.getDocumentElement().getNodeName());
+				
+				writeToFile("Therapy_Initiation_WI_Dispo_Flow_MS.flow".replaceAll(".flow", "") + ",", "Flow_Summary.csv");
+				//writeToFile(contents[i].replaceAll(".flow", "") + ",", "Flow_Summary.csv");
+				
+				if (document.hasChildNodes()) {
+	
+					printNodeList(document.getChildNodes());  
+				}
+				
+				if(processType.equals("InvocableProcess") && skipInvocable) {
+					writeToFile(currentFlow + "," + processType + "," + Status + "," + "\n"  , "Flow_Summary.csv");
+				}
+				else if(processType.equals("AutoLaunchedFlow")) {
+					writeToFile(currentFlow + "," + processType + "," + Status + "," + "\n"  , "Flow_Summary.csv");
+				}
+				else if(variable_objectType.size() > 1) {
+					writeToFile(currentFlow + "," + processType + "," + Status , "Flow_Summary.csv");
+					writeToFile(",Stop - Muliple Objects in variable_objectType" + "\n" , "Flow_Summary.csv");
+				}
+				else {
+					
+					writeToFile(currentFlow + "," + processType + "," + Status + "," , "Flow_Summary.csv");
+					
+					variable_objectType.remove(null);
+					String FinalObjectType = null;
+
+					for(String ObjectType:variable_objectType) {
+						writeToFile(ObjectType , "Flow_Summary.csv");
+						FinalObjectType = ObjectType; 
+					}
+					
+					for(String variable:variables) {
+						//writeToFile("Flow Variables: " + variable + "\n" , "Flow_Summary.csv");
+					}
+					
+					Set<String> decission_Set = new HashSet<String>();
+					String old_decission = null;
+					
+					for(String AllField:decission_condition_Field) {
+						
+						String[] AllFieldArray= AllField.split("[|]");
+						
+						if(old_decission == null) { old_decission =  AllFieldArray[0]; decission_Set.add(old_decission); }
+						
+						if(!old_decission.matches(AllFieldArray[0])) {
+
+							decission_Set.add(old_decission);
+							old_decission = AllFieldArray[0];
+							
+						}
+						
+					}
+					
+					writeToFile("," + decission_Set.size() , "Flow_Summary.csv");
+					
+					Set<String> Field_AllMatch = new HashSet<String>();
+					Set<String> Field_AllbutOne = new HashSet<String>();
+					Set<String> Field_AllbutTwo = new HashSet<String>();
+					
+					for(String Field:condition_Field) {
+						
+						int NoOfMatch = 0;
+						for(String decission:decission_Set) {
+							
+							Set<String> condition_FieldSet = new HashSet<String>();
+							
+							for(String AllField:decission_condition_Field) {
+								String[] AllFieldArray= AllField.split("[|]");
+								
+								if(decission.matches(AllFieldArray[0])) {
+									condition_FieldSet.add(AllFieldArray[1]);
+								}							
+							}
+							
+							if(condition_FieldSet.contains(Field)) {
+								NoOfMatch++;
+							}
+							
+						}
+						
+						if(decission_Set.size() == NoOfMatch) 
+							Field_AllMatch.add(Field);
+						else if(decission_Set.size() - 1 == NoOfMatch) 
+							Field_AllbutOne.add(Field);
+						else if(decission_Set.size() - 2 == NoOfMatch) 
+							Field_AllbutTwo.add(Field);
+					}
+					
+					String Value = null;
+					for(String Field:Field_AllMatch) {	
+						if(Value == null)
+							Value = Field;
+						else
+							Value += " | " + Field;
+							
+					}
+					if(Value != null)
+						writeToFile("," + Value.replaceAll("myVariable_current", FinalObjectType) , "Flow_Summary.csv");
+					else
+						writeToFile("," , "Flow_Summary.csv");
+					
+					Value = null;
+					for(String Field:Field_AllbutOne) {
+						if(Value == null)
+							Value = Field;
+						else
+							Value += " | " + Field;
+							
+					}
+					if(Value != null)
+						writeToFile("," + Value.replaceAll("myVariable_current", FinalObjectType) , "Flow_Summary.csv");
+					else
+						writeToFile("," , "Flow_Summary.csv");					
+					Value = null;
+					for(String Field:Field_AllbutTwo) {
+						if(Value == null)
+							Value = Field;
+						else
+							Value += " | " + Field;
+							
+					}
+					if(Value != null)
+						writeToFile("," + Value.replaceAll("myVariable_current", FinalObjectType) , "Flow_Summary.csv");
+					else
+						writeToFile("," , "Flow_Summary.csv");
+					
+					writeToFile("\n" , "Flow_Summary.csv");
+					
+					
+					for(String decisions:decissionList) {
+						decisions = decisions.replaceAll("myVariable_current", FinalObjectType);
+						writeToFile(contents[i].replaceAll(".flow", "") + ", " + currentFlow + ", " + processType + ", " + decisions, "Flow_Details.csv");
+						writeToFile("\n", "Flow_Details.csv");
+					}
+					
+				}
+				
+				resetVariables();
+				
+				if(i >= 1000)
+					break;
+		  	}
+		}
+		catch (Exception e) {  
+			System.out.println("mainError--> " + e.getMessage());  
+			System.out.println("mainError--> " + e.getStackTrace());
+		}  
+	}  
+	
+	private static void printNodeList(NodeList nodeList)  
+	{
+	try {	
+		for (int count = 0; count < nodeList.getLength(); count++) {  
+			Node elemNode = nodeList.item(count);
+			
+			if (elemNode.getNodeType() == Node.ELEMENT_NODE) {  
+				// get node name and value  
+				Level++;
+				if(logging)
+					System.out.println("Level--> " + Level + " Node Name =" + elemNode.getNodeName()+ " [OPEN]");
+				if(count > 0)
+					if(logging)
+						System.out.println("Node Content =" + elemNode.getTextContent());
+				
+				if(elemNode.getNodeName() == "decisions") decisions = true;
+				if(decisions == true && elemNode.getNodeName() == "label" && decisions_rules == false) decisions_label = true;
+				if(elemNode.getNodeName() == "rules") decisions_rules = true;
+				if(decisions_rules == true && elemNode.getNodeName() == "label") decisions_rules_label = true;				
+				if(elemNode.getNodeName() == "conditions") decisions_conditions = true;
+				if(elemNode.getNodeName() == "leftValueReference") decisions_leftValueReference = true;
+				if(elemNode.getNodeName() == "operator") decisions_operator = true;
+				if(decisions_rightValue  == true) decisions_rightValues = true;
+				if(elemNode.getNodeName() == "rightValue") decisions_rightValue = true;
+				//writeToFile("decisions --> " + decisions + "; rules --> " + decisions_rules + " conditions --> " + decisions_conditions + " leftValueReference --> " + decisions_leftValueReference);
+				
+				if (decisions) {
+					if (decisions_rules) {
+						if (decisions_conditions) {
+	
+							if(decisions_leftValueReference)  
+								conditions_leftValueReference = elemNode.getTextContent();
+						
+							if(decisions_operator)
+								conditions_operator = elemNode.getTextContent();
+						
+							if(decisions_rightValue) if(decisions_rightValues)
+								conditions_rightValues = elemNode.getTextContent();
+						}
+						if(decisions_rules_label)
+							conditions_label = elemNode.getTextContent();
+					}
+					if (decisions_label) 
+						decision_label = elemNode.getTextContent();
+				}
+				if (Level == 2) {
+					if(elemNode.getNodeName() == "label") currentFlow = elemNode.getTextContent();
+					if(elemNode.getNodeName() == "processType") processType = elemNode.getTextContent();
+					if(elemNode.getNodeName() == "variables") Flow_variables = true;
+					if(elemNode.getNodeName() == "status") Status = elemNode.getTextContent();
+					
+				}
+				if (Level == 3) {
+					if (Flow_variables) {
+						if(elemNode.getNodeName() == "objectType") 
+							variables_objectType = elemNode.getTextContent();
+						else if (elemNode.getNodeName() == "isInput")
+							variables_isInput = elemNode.getTextContent();
+						else if (elemNode.getNodeName() == "name")
+							variables_name = elemNode.getTextContent();
+					}
+				}
+				if (Level == 4) {
+					if (decisions) {
+						if(decisions_rules) {
+							if(elemNode.getNodeName() == "label") conditions_label = elemNode.getTextContent();
+						}
+					}
+				}
+				
+				if (elemNode.hasAttributes()) {
+					
+					NamedNodeMap nodeMap = elemNode.getAttributes();  
+					for (int i = 0; i < nodeMap.getLength(); i++) {  
+						//Node node = nodeMap.item(i);  
+						//System.out.println("attr name : " + node.getNodeName());  
+						//System.out.println("attr value : " + node.getNodeValue()); 
+					}  
+				}  
+				if (elemNode.hasChildNodes()) {  
+					//recursive call if the node has child nodes  
+					printNodeList(elemNode.getChildNodes());  
+				}  
+				
+				if(logging)
+				System.out.println("Level--> " + Level + " Node Name =" + elemNode.getNodeName()+ " [CLOSE]");
+				
+				Level--;
+				if(decisions == true && elemNode.getNodeName() == "label" && decisions_rules == false) decisions_label = false;
+				if(elemNode.getNodeName() == "rules") decisions_rules = false;
+				if(decisions_rules == true && elemNode.getNodeName() == "label") decisions_rules_label = false;
+				if(elemNode.getNodeName() == "conditions") {
+					decisions_conditions = false; 
+					if(decision_label != null)
+					if(decision_label.startsWith("myDecision")) {
+						
+						conditions.add(conditions_leftValueReference.replaceAll(",", " ") + "," + conditions_operator.replaceAll(",", " ") + "," + conditions_rightValues.replaceAll(",", " "));
+						condition_Field.add(conditions_leftValueReference);
+						decission_condition_Field.add(decision_label + "|" + conditions_leftValueReference);
+					}
+				}
+				if(elemNode.getNodeName() == "operator") decisions_operator = false; 
+				if(elemNode.getNodeName() == "leftValueReference") decisions_leftValueReference = false; 
+				if(elemNode.getNodeName() == "rightValue") { decisions_rightValue = false; decisions_rightValues=false; }
+				if(elemNode.getNodeName() == "decisions") {
+					
+					if(decision_label != null)
+						if(decision_label.startsWith("myDecision"))
+							for(String condition:conditions) {
+								decissionList.add(order + "," + decision_label.replaceAll(",", " ") + "," +  conditions_label.replaceAll(",", " ") + "," + condition);  
+							}
+					decisions = false; order++; //conditions_label = null; 
+					decisions_count++;
+					decision_label  = null;					
+				}				
+				if(elemNode.getNodeName() == "variables") { 
+					Flow_variables = false;
+					variables.add(variables_name + "," + variables_objectType + "," + variables_isInput);
+					variable_objectType.add(variables_objectType);
+					variables_name = null; variables_isInput = null; variables_isInput = null;
+				}
+			}  
+		}
+	}
+	catch(Exception e) {
+		System.out.println("printNodeListError--> " + e.getMessage());  
+		System.out.println("printNodeListError--> " + e.getStackTrace().toString());
+	}
+	}
+	
+	private static void writeToFile(String msg, String FilenameToWrite){
+		try {
+	         File file = new File(LogLocation + FilenameToWrite);
+	         if (!file.exists()) {
+	            file.createNewFile();
+	         }
+	         FileWriter fw;
+	         if(startingF1 && FilenameToWrite == "Flow_Summary.csv") {
+	        	 fw = new FileWriter(file.getAbsoluteFile());
+	         	startingF1 = false;
+	         } else if(startingF2 && FilenameToWrite == "Flow_Details.csv") {
+	        	 fw = new FileWriter(file.getAbsoluteFile());
+	        	 startingF2 = false;
+	         }
+	         else
+	        	 fw = new FileWriter(file.getAbsoluteFile(), true);
+	         BufferedWriter bw = new BufferedWriter(fw);
+	         bw.write(msg);
+	         bw.close();
+	         
+	      } catch (IOException e) {
+	         e.printStackTrace();
+	      }  					
+	}
+	private static void resetVariables(){
+		Status = null;
+		actionCalls = false; actionCalls_processMetadataValues= false;
+		processMetadataValues_name= false; processMetadataValues_value= false; processMetadataValues_stringValue = false;
+		inputParameters= false; inputParameters_processMetadataValues = false;
+		decisions = false; decisions_rules = false; decisions_conditions = false; decisions_label = false; decisions_rules_label = false;
+		decisions_operator = false; decisions_leftValueReference = false; decisions_rightValue = false; decisions_rightValues = false;
+		Flow_variables = false;
+		conditions = new ArrayList<>();
+		condition_Field = new HashSet<String>();
+		decission_condition_Field = new HashSet<String>();
+		decissionList = new ArrayList<>();
+		decisions_list = new ArrayList<String[]>();
+		conditions_leftValueReference = null; conditions_operator= null; conditions_rightValues= null; conditions_label= null; decision_label= null;
+		order = 0;
+		currentFlow = null; processType = null;
+		variables_name = null; variables_objectType = null; variables_isInput = null;
+		variables = new HashSet<String>();
+		variable_objectType = new HashSet<String>();
+		Level = 0;
+		
+	}
+	private static void writeHeader(String HeaderType){
+		
+		if(HeaderType == "decisions") {
+	writeToFile("API Name," + "PB Name" + "," + "PB Type" + ","  + "Order" + "," + "Decission Label" + "," + "Criteria Name" + "," + "Field" + "," + "Operator" + "," + "Value"  + "\n", "Flow_Details.csv");
+		}
+		if(HeaderType == "Summary") {
+			writeToFile("API Name," + "PB Name," + "PB Type," + "Status," + "ObjectType," + "No of Condition," + "Common_Field_All_Match," + "Common_Field_AllbutOne_Match," + "Common_Field_AllbutTwo_Match" + "\n", "Flow_Summary.csv");
+		}
+	}	
+}  
